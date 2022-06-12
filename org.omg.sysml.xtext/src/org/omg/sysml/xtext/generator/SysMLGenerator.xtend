@@ -7,6 +7,17 @@ import org.eclipse.emf.ecore.resource.Resource
 import org.eclipse.xtext.generator.AbstractGenerator
 import org.eclipse.xtext.generator.IFileSystemAccess2
 import org.eclipse.xtext.generator.IGeneratorContext
+import org.omg.sysml.lang.sysml.PartDefinition
+import org.omg.sysml.lang.sysml.PartUsage
+import org.omg.sysml.lang.sysml.Package
+import org.omg.sysml.lang.sysml.Namespace
+import org.omg.sysml.lang.sysml.MultiplicityRange
+import org.omg.sysml.lang.sysml.LiteralInteger
+import org.omg.sysml.lang.sysml.AttributeUsage
+import org.omg.sysml.lang.sysml.AttributeDefinition
+import org.omg.sysml.lang.sysml.EnumerationDefinition
+import org.omg.sysml.lang.sysml.EnumerationUsage
+import org.omg.sysml.lang.sysml.LiteralInfinity
 
 /**
  * Generates code from your model files on save.
@@ -16,10 +27,133 @@ import org.eclipse.xtext.generator.IGeneratorContext
 class SysMLGenerator extends AbstractGenerator {
 
 	override void doGenerate(Resource resource, IFileSystemAccess2 fsa, IGeneratorContext context) {
-//		fsa.generateFile('greetings.txt', 'People to greet: ' + 
-//			resource.allContents
-//				.filter(Greeting)
-//				.map[name]
-//				.join(', '))
+		val model = resource.contents.get(0) as Namespace
+		val name = resource.URI.trimFileExtension().lastSegment()
+		fsa.generateFile(name + ".problem", generate(model))
 	}
+	
+	private def generate(Namespace model) '''
+	«FOR p : model.member.filter(Package)»
+		«FOR pd : p.member.filter(PartDefinition)»
+			«IF pd.isAbstract»
+				abstract class «pd.name»«
+			ELSE»
+				class «pd.name»«
+			ENDIF»«
+			val super_types = pd.ownedSubclassification»«
+			IF super_types.size != 0» extends «
+				super_types.get(0).superclassifier.name»«
+				FOR i : 1 ..< super_types.size», «
+					super_types.get(i).superclassifier.name»«
+				ENDFOR»«
+			ENDIF» {
+			«FOR pu : pd.ownedPart.filter(PartUsage)»
+				contains «pu.definition.get(0).name» «
+				IF pu.multiplicity instanceof MultiplicityRange»«
+					val l_bound = (pu.multiplicity as MultiplicityRange).lowerBound»«
+					val u_bound = (pu.multiplicity as MultiplicityRange).upperBound»«
+					val bound = (pu.multiplicity as MultiplicityRange).bound.get(0)»«
+					IF (l_bound !== null) && (u_bound !== null)»[«
+						IF l_bound instanceof LiteralInteger»«
+							(l_bound as LiteralInteger).value»..«
+						ENDIF»«
+						IF u_bound instanceof LiteralInfinity»*«
+						ELSEIF u_bound instanceof LiteralInteger»«
+							(u_bound as LiteralInteger).value»«
+						ENDIF»] «
+					ELSEIF bound !== null»«
+						IF (bound instanceof LiteralInfinity)»[] «
+						ELSEIF (bound instanceof LiteralInteger) 
+							&& (bound as LiteralInteger).value != 1»[«
+							(bound as LiteralInteger).value»] «
+						ENDIF»«
+					ENDIF»«
+				ENDIF»«pu.name»
+			«ENDFOR»
+			«FOR attr : pd.ownedAttribute.filter(AttributeUsage)»
+				«val type = attr.definition.get(0).name»
+				«IF (type.equals("Integer")) ||
+					(type.equals("Unlimited Natural"))»int «
+				ELSEIF type.equals("String")»string «
+				ELSEIF type.equals("Real")»real «
+				ELSEIF type.equals("Boolean")»bool «
+				ELSE»«type» «
+				ENDIF»«
+				IF attr.multiplicity instanceof MultiplicityRange»«
+					val l_bound = (attr.multiplicity as MultiplicityRange).lowerBound»«
+					val u_bound = (attr.multiplicity as MultiplicityRange).upperBound»«
+					val bound = (attr.multiplicity as MultiplicityRange).bound.get(0)»«
+					IF (l_bound !== null) && (u_bound !== null)»[«
+						IF l_bound instanceof LiteralInteger»«
+							(l_bound as LiteralInteger).value»..«
+						ENDIF»«
+						IF u_bound instanceof LiteralInfinity»*«
+						ELSEIF u_bound instanceof LiteralInteger»«
+							(u_bound as LiteralInteger).value»«
+						ENDIF»] «
+					ELSEIF bound !== null»«
+						IF (bound instanceof LiteralInfinity)»[] «
+						ELSEIF (bound instanceof LiteralInteger) 
+							&& (bound as LiteralInteger).value != 1»[«
+							(bound as LiteralInteger).value»] «
+						ENDIF»«
+					ENDIF»«
+				ENDIF»«attr.name»
+			«ENDFOR»
+			}
+			
+		«ENDFOR»	
+		«FOR ad : p.member.filter(AttributeDefinition)»
+			«IF ad instanceof EnumerationDefinition»
+				enum «ad.name» {
+				«val enum_values = ad.member.filter(EnumerationUsage)»«
+				IF enum_values.size != 0»«
+					enum_values.get(0).name»«
+					FOR i : 1 ..< enum_values.size», «
+						enum_values.get(i).name»«
+					ENDFOR»«
+				ENDIF»
+			«ELSE»
+				class «ad.name» {
+			«ENDIF»
+			«FOR au : ad.ownedAttribute.filter(AttributeUsage)»
+				«val type = au.definition.get(0).name»
+				«IF (type.equals("Integer")) ||
+					(type.equals("Unlimited Natural"))»int «
+				ELSEIF type.equals("String")»string «
+				ELSEIF type.equals("Real")»real «
+				ELSEIF type.equals("Boolean")»bool «
+				ELSE»«type» «
+				ENDIF»«
+				IF au.multiplicity instanceof MultiplicityRange»«
+					val l_bound = (au.multiplicity as MultiplicityRange).lowerBound»«
+					val u_bound = (au.multiplicity as MultiplicityRange).upperBound»«
+					val bound = (au.multiplicity as MultiplicityRange).bound.get(0)»«
+					IF (l_bound !== null) && (u_bound !== null)»[«
+						IF l_bound instanceof LiteralInteger»«
+							(l_bound as LiteralInteger).value»..«
+						ENDIF»«
+						IF u_bound instanceof LiteralInfinity»*«
+						ELSEIF u_bound instanceof LiteralInteger»«
+							(u_bound as LiteralInteger).value»«
+						ENDIF»] «
+					ELSEIF bound !== null»«
+						IF (bound instanceof LiteralInfinity)»[] «
+						ELSEIF (bound instanceof LiteralInteger) 
+							&& (bound as LiteralInteger).value != 1»[«
+							(bound as LiteralInteger).value»] «
+						ENDIF»«
+					ENDIF»«
+				ENDIF»«au.name»
+			«ENDFOR»
+			}
+			
+		«ENDFOR»	
+		«FOR pu : p.member.filter(PartUsage)»
+			«pu.definition.get(0).name»(«pu.name»).	
+		«ENDFOR»
+	«ENDFOR»
+		
+	'''
+	
 }
